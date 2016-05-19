@@ -1,8 +1,10 @@
 package main
 
 import (
+	"bufio"
 	"fmt"
-	"io/ioutil"
+	"log"
+	"os"
 	s "strings"
 	"time"
 )
@@ -13,35 +15,52 @@ func checkFile(e error) {
 	}
 }
 
-func checkContains(input string, tags []string) bool {
-	fmt.Printf("Amount of tags: %d\n", len(tags))
+func checkContains(tags []string) bool {
 	var val bool = false
-
-	for index, element := range tags {
-		fmt.Printf("idx: %d - %s - ", index, element)
-		if s.Contains(input, element) {
-			fmt.Print("Error found!\n")
-			val = true;
-		} else {
-			fmt.Print("none\n")
-		}
+	var amount int = 0;
+	
+	file, err := os.Open(os.Args[1])
+	if err != nil {
+		log.Fatal(err)
 	}
+	defer file.Close()
+	
+	scanner := bufio.NewScanner(file)
+	for scanner.Scan() {
+		input := scanner.Text()
+		fmt.Println(input)
+		for index, element := range tags {
+			if s.Contains(input, element) {
+				val = true
+				fmt.Printf("idx: %d", index)
+				amount++
+			}
+		}
+	}	
+	if err := scanner.Err(); err != nil {
+		log.Fatal(err)
+	}	
+	
+	fmt.Printf("\namount of errors: %d\n", amount)
+
 	return val
 }
 
 func main() {
+	if len(os.Args) != 2 {
+		os.Exit(1)
+	}
+	
 	t := time.Now()
 
 	fmt.Println("== Starting data checker ==")
 	fmt.Printf("%d-%02d-%02d %d:%d:%d\n\n", t.Year(), t.Month(), t.Day(), t.Hour(), t.Minute(), t.Second())
 
-	dat, err := ioutil.ReadFile("test.txt")
-	checkFile(err)
-	fmt.Printf("%s\n\n", string(dat))
+	
 
 	tags := []string{"ERROR", "Error", "error", "Warning"}
 
-	if checkContains(string(dat), tags) {
+	if checkContains(tags) {
 		fmt.Println("ERROR FOUND")
 	} else {
 		fmt.Println("NO ERRORS FOUND")
