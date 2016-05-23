@@ -8,6 +8,7 @@ _obj
 _test
 
 /logs
+huge_test.txt
 
 # Architecture specific extensions/prefixes
 *.[568vq]
