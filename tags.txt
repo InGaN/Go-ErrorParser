@@ -1,0 +1,1 @@
+ERROR, Error, error, Warning, WARNING
