@@ -18,7 +18,11 @@ import (
 var i = 0
 var pTotalAmount *int = &i
 var x = 0
-var pTotalFiles *int = &x
+var pTotalFilesTagged *int = &x
+var a = 0
+var pTotalFiles *int = &a
+var b int64 = 0 //this all seems redundant
+var pTotalFileSize *int64 = &b
 var buffer bytes.Buffer
 var pTags *[]string
 
@@ -37,7 +41,7 @@ func timeTrack(start time.Time, name string) {
 }
 
 func visit(path string, f os.FileInfo, err error) error {
-	fmt.Printf("Visited: %s\n", path)
+	//fmt.Printf("Visited: %s\n", path)
 	arr := (s.Split(path,"."))
 	mimeTxt := mime.TypeByExtension(".txt")
 	if(len(arr)>1) {
@@ -48,11 +52,8 @@ func visit(path string, f os.FileInfo, err error) error {
   return nil
 } 
 
-func checkFiles(path string) {
-	defer timeTrack(time.Now(), "Operation")
-	mimeTxt := mime.TypeByExtension(".txt")
-	
-		
+func checkFiles(path string) {	
+	mimeTxt := mime.TypeByExtension(".txt")		
 	if(*searchR) {
 		err := filepath.Walk(path, visit)
 		if err != nil {
@@ -64,7 +65,9 @@ func checkFiles(path string) {
 			arr := (s.Split(file.Name(),"."))
 			if(len(arr)>1) {
 				if(mime.TypeByExtension("."+arr[len(arr)-1]) == mimeTxt) {
+					*pTotalFiles++
 					//fmt.Printf("Type: %s\n", file.Name())
+					*pTotalFileSize = *pTotalFileSize + file.Size()
 					checkContainsScanner(fmt.Sprintf("%s\\%s",path, file.Name()), *pTags)
 				}				
 			}
@@ -88,7 +91,7 @@ func checkContainsScanner(path string, tags []string) {
 	}	
 	if(changeFlag < *pTotalAmount) {
 		buffer.WriteString(fmt.Sprintf("%s (%d)\n", file.Name(), (*pTotalAmount-changeFlag)))
-		*pTotalFiles++
+		*pTotalFilesTagged++
 	}
 	if err := scanner.Err(); err != nil {
 		log.Fatal(err)
@@ -112,7 +115,7 @@ func checkContainsReadString(path string, tags []string) {
 	}			
 	if(changeFlag < *pTotalAmount) {
 		buffer.WriteString(fmt.Sprintf("%s (%d)\n", file.Name(), (*pTotalAmount-changeFlag)))
-		*pTotalFiles++
+		*pTotalFilesTagged++
 	}
 	file.Close()
 }
@@ -153,16 +156,32 @@ func showHelp() {
 	fmt.Println("-t=<path>\t\tpath to csv file containing tags")
 }
 
+func getByteSize(value int64) string {
+	sizes := []string{"Byte", "KB", "MB", "GB", "TB", "PB", "EB", "ZB", "YB"}
+	
+	if(value < 0) {
+		return "-"
+	}
+	i := 0
+	for (value/1024 >= 1) {
+		value = value / 1024
+		i++
+	}
+	return fmt.Sprintf("%d%s", value, sizes[i])
+}
+
 func main() {
 	flag.Parse()
 	if(*helpParam1 || *helpParam2) {
 		showHelp()
 	} else {
+		defer timeTrack(time.Now(), "Operation")
 		if *fileDir == "" {
 			fmt.Fprintln(os.Stderr, "require a folder")
 			flag.Usage()
 			os.Exit(1)
 		}	
+		fmt.Println("\nStarting parse...")		
 		
 		tags := parseTagFile(*tagParam)
 		pTags = &tags
@@ -170,14 +189,17 @@ func main() {
 		checkFiles(*fileDir)
 		
 		t := time.Now()
-		fmt.Println("\n=== RESULTS ===")		
-		fmt.Printf("%d-%02d-%02d %d:%d:%d\n", t.Year(), t.Month(), t.Day(), t.Hour(), t.Minute(), t.Second())
+		fmt.Println("\n=== FILES ===")
+		fmt.Printf(buffer.String())
+		fmt.Println("\n=== RESULTS ===")
+		fmt.Printf("%d-%02d-%02d %02d:%02d:%02d\n", t.Year(), t.Month(), t.Day(), t.Hour(), t.Minute(), t.Second())
 		fmt.Println("Directory: ", *fileDir)
 		fmt.Println("Tags file: ", *tagParam)
 		fmt.Printf("Tags: %v\n", parseTagFile(*tagParam))
-		fmt.Println("Recursive: ", *searchR)
+		fmt.Println("Recursive: ", *searchR)	
+		fmt.Printf("Total files scanned: %d\n", *pTotalFiles)			
+		fmt.Printf("total file size: %s\n", getByteSize(*pTotalFileSize))
 		fmt.Printf("total amount of tags found: %d\n", *pTotalAmount)
-		fmt.Printf("in %d files:\n", *pTotalFiles)
-		fmt.Printf(buffer.String())
+		fmt.Printf("in %d files\n", *pTotalFilesTagged)					
 	}
 }

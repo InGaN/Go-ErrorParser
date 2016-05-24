@@ -7,7 +7,7 @@
 _obj
 _test
 
-/logs
+/logs[0-9]
 huge_test.txt
 
 # Architecture specific extensions/prefixes
