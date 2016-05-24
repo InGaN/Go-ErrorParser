@@ -9,6 +9,7 @@ _test
 
 /logs[0-9]
 huge_test.txt
+slack/
 
 # Architecture specific extensions/prefixes
 *.[568vq]
