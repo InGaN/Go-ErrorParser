@@ -5,7 +5,7 @@ import (
 	"bytes"	
 	"flag"
 	"fmt"
-	"io"
+//	"io"
 	"io/ioutil"
 	"log"
 	"mime"
@@ -18,25 +18,17 @@ import (
 	"github.com/InGaN/Go-ErrorParser/slack"
 )
 
-var i = 0
-var pTotalTagged *int = &i
-var x = 0
-var pTotalFilesTagged *int = &x
-var a = 0
-var pTotalFiles *int = &a
-var b int64 = 0 //this all seems redundant
-var pTotalFileSize *int64 = &b
 var buffer bytes.Buffer
 var pTags *[]string
-
-var pointerLock sync.Mutex
 var mimeTxt = mime.TypeByExtension(".txt")	
 
-type channelStruct struct {
+/*
+type counter struct {
+	TotalTagged chan int
+	TotalFilesTagged chan int
 	TotalFiles chan int
 	TotalFileSize chan int64
-	TotalTagged chan int	
-}
+} */
 
 var (	
 	flagHelp1	 = flag.Bool("h", false, "help")
@@ -65,8 +57,7 @@ func visit(path string, f os.FileInfo, err error) error {
   return nil
 } 
 
-func checkFiles(path string, channels channelStruct) {	
-		
+func searchMethod(path string, c chan int, wg *sync.WaitGroup) {			
 	if(*flagSearchR) {
 		err := filepath.Walk(path, visit)
 		if err != nil {
@@ -74,86 +65,65 @@ func checkFiles(path string, channels channelStruct) {
 		}
 	} else {
 		files, _ := ioutil.ReadDir(path)
-		for _, file := range files { // this should be async							
-			go checkContainsScanner(fmt.Sprintf("%s\\%s",path, file.Name()), *pTags, channels)
-			//<-(channels.TotalFiles)
-			//<-(channels.TotalFileSize)
-			//<-(channels.TotalTagged)
-		}	
+		checkFiles(path, files, c, wg)	
 	}	
 }
 
-func checkContainsScanner(path string, tags []string, channels channelStruct) {	
+func checkFiles(path string, files []os.FileInfo, c chan int, wg *sync.WaitGroup) {
+	for _, file := range files {
+		wg.Add(1)
+		go checkContainsScanner(fmt.Sprintf("%s\\%s",path, file.Name()), *pTags, c, wg)	
+	}	
+}
+
+func checkContainsScanner(path string, tags []string, c chan int, wg *sync.WaitGroup) {		
+	/*Files := 0
+	var FileSize int64 = 0
+	FilesTagged := 0*/
+	Tagged := 0
+	TotalTags := 0
+	
 	arr := (s.Split(path,"."))
 	if(len(arr)>1) {		
-		if(mime.TypeByExtension("."+arr[len(arr)-1]) == mimeTxt) {		
-			
+		if(mime.TypeByExtension("."+arr[len(arr)-1]) == mimeTxt) {					
 			file, err := os.Open(path)
 			if err != nil {
 				log.Fatal(err)
 			}
-		
-			//pointerLock.Lock()
-			*pTotalFiles++		
-			channels.TotalFiles <- *pTotalFiles
-			
-			stat, err := file.Stat()
-			*pTotalFileSize = *pTotalFileSize + stat.Size()
-			channels.TotalFileSize <- *pTotalFileSize
-				
 			defer file.Close()
-			changeFlag := *pTotalTagged
+			
+			//Files++		
+			//stat, err := file.Stat()
+			//FileSize = stat.Size()
 			
 			scanner := bufio.NewScanner(file)
 			for scanner.Scan() {
 				input := scanner.Text()
-				parseLine(input, tags)
+				Tagged = parseLine(input, tags)
+				TotalTags += Tagged
 			}	
-			if(changeFlag < *pTotalTagged) {
-				buffer.WriteString(fmt.Sprintf("%s (%d)\n", file.Name(), (*pTotalTagged-changeFlag)))
-				*pTotalFilesTagged++		
+			if(Tagged > 0) {
+				buffer.WriteString(fmt.Sprintf("%s (%d)\n", file.Name(), Tagged))	
+				
+				//FilesTagged++		
 			}
-			channels.TotalTagged <- *pTotalFilesTagged
-			//pointerLock.Unlock()
 			if err := scanner.Err(); err != nil {
 				log.Fatal(err)
 			}
-		}
-		
+		}		
 	}
+	/*c.TotalFiles <- Files
+	c.TotalFileSize <- FileSize
+	c.TotalFilesTagged <- FilesTagged
+	c.TotalTagged <- Tagged	*/
+	c <- TotalTags
+	wg.Done()
 }
 
-func checkContainsReadString(path string, tags []string) {
-	file, err := os.Open(path)
-	if err != nil {
-		log.Fatal(err)
-	}
-	
-	*pTotalFiles++
-	stat, err := file.Stat()
-	*pTotalFileSize = *pTotalFileSize + stat.Size()
-	
-	changeFlag := *pTotalTagged
-	
-	r := bufio.NewReader(file)
-	for {
-		recordRaw, err := r.ReadString('\n')
-		if err == io.EOF {
-			break
-		}
-		parseLine(recordRaw, tags)
-	}			
-	if(changeFlag < *pTotalTagged) {
-		buffer.WriteString(fmt.Sprintf("%s (%d)\n", file.Name(), (*pTotalTagged-changeFlag)))
-		*pTotalFilesTagged++
-	}
-	file.Close()
-}
-
-func parseLine(input string, tags []string) {
+func parseLine(input string, tags []string) int {
 	amount := 0
 	for index, element := range tags {
-		if s.Contains(input, element) {
+		if s.Contains(input, element) {			
 			if(*flagEchoMsg) {
 				fmt.Printf("tag: %s | %s \n", tags[index], input)
 			}
@@ -163,7 +133,7 @@ func parseLine(input string, tags []string) {
 			amount++
 		}
 	}
-	*pTotalTagged = *pTotalTagged + amount
+	return amount
 }
 
 func parseTagFile(path string) []string{
@@ -219,16 +189,32 @@ func main() {
 		tags := parseTagFile(*flagTags)
 		pTags = &tags
 		
-		channels := channelStruct{}
-		channels.TotalFiles = make(chan int)
-		channels.TotalFileSize = make(chan int64)
-		channels.TotalTagged = make(chan int)
-
-		checkFiles(*flagFileDir, channels)			
+		wg := &sync.WaitGroup{}	
+		c := make(chan int)
+		/*ctr := &counter{}
+		ctr.TotalTagged = make(chan int)
+		ctr.TotalFilesTagged = make(chan int)
+		ctr.TotalFiles = make(chan int)
+		ctr.TotalFileSize = make(chan int64)*/
+		
+		searchMethod(*flagFileDir, c, wg)			
+		
+		go func(c chan int, wg *sync.WaitGroup) {
+			wg.Wait()
+			close(c)
+		}(c, wg)
+		
+		TotalTagged := 0
+		y := 0
+		for i := range c {
+			y++
+			fmt.Printf("%02d-%v\n",y, i)
+			TotalTagged += i
+		}	
 		
 		t := time.Now()
 		fmt.Println("\n=== FILES ===")
-		fmt.Printf(buffer.String())
+		//fmt.Printf(buffer.String())
 		fmt.Println("\n=== RESULTS ===")
 		fmt.Printf("%d-%02d-%02d %02d:%02d:%02d\n", t.Year(), t.Month(), t.Day(), t.Hour(), t.Minute(), t.Second())
 		fmt.Println("Directory: ", *flagFileDir)
@@ -236,9 +222,9 @@ func main() {
 		fmt.Printf("Tags: %v\n", parseTagFile(*flagTags))
 		fmt.Println("Recursive: ", *flagSearchR)	
 		fmt.Println("Send to Slack Channel: ", *flagSlack)
-		fmt.Printf("Total files scanned: %d\n", channels.TotalFiles)
-		fmt.Printf("total file size: %s\n", getByteSize(*pTotalFileSize))
-		fmt.Printf("total amount of tags found: %d\n", *pTotalTagged)
-		fmt.Printf("in %d files\n", *pTotalFilesTagged)					
+		//fmt.Printf("Total files scanned: %d\n", )
+		//fmt.Printf("total file size: %s\n", getByteSize(*pTotalFileSize))
+		fmt.Printf("total amount of tags found: %d\n", TotalTagged)
+		//fmt.Printf("in %d files\n", *pTotalFilesTagged)	*/				
 	}
 }
