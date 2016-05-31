@@ -22,13 +22,10 @@ var buffer bytes.Buffer
 var pTags *[]string
 var mimeTxt = mime.TypeByExtension(".txt")	
 
-/*
+
 type counter struct {
 	TotalTagged chan int
-	TotalFilesTagged chan int
-	TotalFiles chan int
-	TotalFileSize chan int64
-} */
+} 
 
 var (	
 	flagHelp1	 = flag.Bool("h", false, "help")
@@ -57,7 +54,7 @@ func visit(path string, f os.FileInfo, err error) error {
   return nil
 } 
 
-func searchMethod(path string, c chan int, wg *sync.WaitGroup) {			
+func searchMethod(path string, c *counter, wg *sync.WaitGroup) {			
 	if(*flagSearchR) {
 		err := filepath.Walk(path, visit)
 		if err != nil {
@@ -69,14 +66,14 @@ func searchMethod(path string, c chan int, wg *sync.WaitGroup) {
 	}	
 }
 
-func checkFiles(path string, files []os.FileInfo, c chan int, wg *sync.WaitGroup) {
+func checkFiles(path string, files []os.FileInfo, c *counter, wg *sync.WaitGroup) {
 	for _, file := range files {
 		wg.Add(1)
 		go checkContainsScanner(fmt.Sprintf("%s\\%s",path, file.Name()), *pTags, c, wg)	
 	}	
 }
 
-func checkContainsScanner(path string, tags []string, c chan int, wg *sync.WaitGroup) {		
+func checkContainsScanner(path string, tags []string, c *counter, wg *sync.WaitGroup) {		
 	/*Files := 0
 	var FileSize int64 = 0
 	FilesTagged := 0*/
@@ -116,7 +113,7 @@ func checkContainsScanner(path string, tags []string, c chan int, wg *sync.WaitG
 	c.TotalFileSize <- FileSize
 	c.TotalFilesTagged <- FilesTagged
 	c.TotalTagged <- Tagged	*/
-	c <- TotalTags
+	c.TotalTagged <- TotalTags
 	wg.Done()
 }
 
@@ -190,23 +187,20 @@ func main() {
 		pTags = &tags
 		
 		wg := &sync.WaitGroup{}	
-		c := make(chan int)
-		/*ctr := &counter{}
+		//c := make(chan int)
+		ctr := &counter{}
 		ctr.TotalTagged = make(chan int)
-		ctr.TotalFilesTagged = make(chan int)
-		ctr.TotalFiles = make(chan int)
-		ctr.TotalFileSize = make(chan int64)*/
 		
-		searchMethod(*flagFileDir, c, wg)			
+		searchMethod(*flagFileDir, ctr, wg)			
 		
-		go func(c chan int, wg *sync.WaitGroup) {
+		go func(c *counter, wg *sync.WaitGroup) {
 			wg.Wait()
-			close(c)
-		}(c, wg)
+			close(c.TotalTagged)
+		}(ctr, wg)
 		
 		TotalTagged := 0
 		y := 0
-		for i := range c {
+		for i := range ctr.TotalTagged {
 			y++
 			fmt.Printf("%02d-%v\n",y, i)
 			TotalTagged += i
