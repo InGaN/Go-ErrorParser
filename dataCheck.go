@@ -27,6 +27,9 @@ type counter struct {
 	FileName string
 } 
 
+var channels chan counter
+var waitGroups *sync.WaitGroup = &sync.WaitGroup{}	
+
 var (	
 	flagHelp1	 = flag.Bool("h", false, "help")
 	flagHelp2	 = flag.Bool("help", false, "help")
@@ -44,11 +47,12 @@ func timeTrack(start time.Time, name string) {
 
 func visit(path string, f os.FileInfo, err error) error {
 	//fmt.Printf("Visited: %s\n", path)
+	
 	arr := (s.Split(path,"."))
 	mimeTxt := mime.TypeByExtension(".txt")
 	if(len(arr)>1) {
-		if(mime.TypeByExtension("."+arr[len(arr)-1]) == mimeTxt) {
-			//checkContainsScanner(path, *pTags)
+		if(mime.TypeByExtension("."+arr[len(arr)-1]) == mimeTxt) {			
+			go checkContainsScanner(path, *pTags, channels, waitGroups)
 		}
 	}  
   return nil
@@ -67,13 +71,13 @@ func searchMethod(path string, c chan counter, wg *sync.WaitGroup) {
 }
 
 func checkFiles(path string, files []os.FileInfo, c chan counter, wg *sync.WaitGroup) {
-	for _, file := range files {
-		wg.Add(1)
+	for _, file := range files {		
 		go checkContainsScanner(fmt.Sprintf("%s\\%s",path, file.Name()), *pTags, c, wg)	
 	}	
 }
 
 func checkContainsScanner(path string, tags []string, c chan counter, wg *sync.WaitGroup) {		
+	wg.Add(1)
 	ctr := counter{}
 	Tagged := 0
 	TotalTags := 0
@@ -181,22 +185,21 @@ func main() {
 		tags := parseTagFile(*flagTags)
 		pTags = &tags
 		
-		wg := &sync.WaitGroup{}	
-		c := make(chan counter)
+		channels = make(chan counter)
 		
-		searchMethod(*flagFileDir, c, wg)			
+		searchMethod(*flagFileDir, channels, waitGroups)			
 		
-		go func(c chan counter, wg *sync.WaitGroup) {
-			wg.Wait()
-			close(c)
-		}(c, wg)
+		go func(channels chan counter, waitGroups *sync.WaitGroup) {
+			waitGroups.Wait()
+			close(channels)
+		}(channels, waitGroups)
 		
 		TotalTagged := 0
 		TotalFilesTagged := 0
 		TotalFiles := 0
 		var TotalFileSize int64 = 0
 		var buffer bytes.Buffer
-		for i := range c {
+		for i := range channels {
 			TotalTagged += i.TotalTagged
 			if(i.TotalTagged > 0) {
 				TotalFilesTagged++
