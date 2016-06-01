@@ -18,13 +18,13 @@ import (
 	"github.com/InGaN/Go-ErrorParser/slack"
 )
 
-var buffer bytes.Buffer
 var pTags *[]string
 var mimeTxt = mime.TypeByExtension(".txt")	
 
 type counter struct {
 	TotalTagged int
 	TotalFileSize int64
+	FileName string
 } 
 
 var (	
@@ -78,6 +78,7 @@ func checkContainsScanner(path string, tags []string, c chan counter, wg *sync.W
 	Tagged := 0
 	TotalTags := 0
 	var FileSize int64 = 0
+	var FileName string
 	arr := (s.Split(path,"."))
 	if(len(arr)>1) {		
 		if(mime.TypeByExtension("."+arr[len(arr)-1]) == mimeTxt) {					
@@ -86,8 +87,7 @@ func checkContainsScanner(path string, tags []string, c chan counter, wg *sync.W
 				log.Fatal(err)
 			}
 			defer file.Close()
-			
-			//Files++		
+				
 			stat, err := file.Stat()
 			FileSize = stat.Size()
 			
@@ -97,23 +97,18 @@ func checkContainsScanner(path string, tags []string, c chan counter, wg *sync.W
 				Tagged = parseLine(input, tags)
 				TotalTags += Tagged
 			}	
-			if(Tagged > 0) {
-				buffer.WriteString(fmt.Sprintf("%s (%d)\n", file.Name(), Tagged))	
-				
-				//FilesTagged++		
+			if(TotalTags > 0) {
+				FileName = path
 			}
 			if err := scanner.Err(); err != nil {
 				log.Fatal(err)
 			}
 		}		
 	}
-	/*c.TotalFiles <- Files	
-	c.TotalFilesTagged <- FilesTagged
-	c.TotalTagged <- Tagged	*/	
 	ctr.TotalTagged = TotalTags
 	ctr.TotalFileSize = FileSize
+	ctr.FileName = FileName
 	c <- ctr
-	//c.TotalFileSize <- FileSize
 	wg.Done()
 }
 
@@ -200,10 +195,12 @@ func main() {
 		TotalFilesTagged := 0
 		TotalFiles := 0
 		var TotalFileSize int64 = 0
+		var buffer bytes.Buffer
 		for i := range c {
 			TotalTagged += i.TotalTagged
 			if(i.TotalTagged > 0) {
 				TotalFilesTagged++
+				buffer.WriteString(fmt.Sprintf("%s (%d)\n", i.FileName, i.TotalTagged))
 			}
 			TotalFileSize += i.TotalFileSize
 			if(i.TotalFileSize > 0) {
@@ -213,7 +210,7 @@ func main() {
 		
 		t := time.Now()
 		fmt.Println("\n=== FILES ===")
-		//fmt.Printf(buffer.String())
+		fmt.Printf(buffer.String())
 		fmt.Println("\n=== RESULTS ===")
 		fmt.Printf("%d-%02d-%02d %02d:%02d:%02d\n", t.Year(), t.Month(), t.Day(), t.Hour(), t.Minute(), t.Second())
 		fmt.Println("Directory: ", *flagFileDir)
