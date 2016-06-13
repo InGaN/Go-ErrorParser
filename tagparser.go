@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"bytes"	
 	"encoding/json"	
+	"errors"
 	"fmt"
 	"io/ioutil"
 	"log"
@@ -157,18 +158,26 @@ func getByteSize(value int64) string {
 // pr - print summary
 // dir - directory to search .txt files
 // tags - .txt file containing comma separated tags
-func Parse(r bool, pr bool, dir string, tags string) []byte {
+// tagArray - []string array directly instead of text file
+func Parse(r bool, pr bool, dir string, tags string, tagArray []string) ([]byte, error)  {
 	if (pr) { 
-		defer timeTrack(time.Now(), "Operation") 
+		defer timeTrack(time.Now(), "Operation")
 		fmt.Println("\nStarting parse...")
 	}
-	if (dir == "") {
-		fmt.Fprintln(os.Stderr, "require a folder")
-		os.Exit(1) // throw exception instead
+	if (dir == "") {		
+		dir = "."
 	}				
 	
-	tagss := parseTagFile(tags)
-	pTags = &tagss
+	if(tagArray == nil) {
+		if(tags == "") {
+			return nil, errors.New("No tags specified")
+		} else {
+			t := parseTagFile(tags)
+			pTags = &t
+		}		
+	} else {
+		pTags = &tagArray
+	}
 	
 	channels = make(chan counter)
 	
@@ -202,14 +211,15 @@ func Parse(r bool, pr bool, dir string, tags string) []byte {
 		Date: fmt.Sprintf("%d-%02d-%02d %02d:%02d:%02d", t.Year(), t.Month(), t.Day(), t.Hour(), t.Minute(), t.Second()),
 		Directory: dir,
 		TagsFile: tags,
-		Tags: parseTagFile(tags),
+		Tags: *pTags,
 		Scanned: TotalFiles,
 		Size: getByteSize(TotalFileSize),
 		AmountTags: TotalTagged,
 		AmountFiles: TotalFilesTagged,			
 	} 
-	rsp, _:= json.Marshal(response)
-			
+	rsp, err := json.Marshal(response)	
+	if(err != nil) { return nil, errors.New("JSON error") }	
+	
 	if (pr) { 
 		fmt.Println("\n=== FILES ===")
 		fmt.Printf(buffer.String())
@@ -224,5 +234,5 @@ func Parse(r bool, pr bool, dir string, tags string) []byte {
 		fmt.Printf("total amount of tags found: %d\n", TotalTagged)
 		fmt.Printf("in %d files\n", TotalFilesTagged)				
 	}
-	return rsp
+	return rsp, err
 }
