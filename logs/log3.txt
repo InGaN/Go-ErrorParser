@@ -1,0 +1,15 @@
+This line contains ERROR.
+not this one.
+nor this one.
+This line contains Error.
+not this one.
+nor this one.
+This line contains WARNING.
+This line contains ERROR.
+not this one.
+nor this one.
+This line contains Error.
+not this one.
+nor this one.
+This line contains WARNING.
+This line contains an Error, Warning, ERROR and WARNING.

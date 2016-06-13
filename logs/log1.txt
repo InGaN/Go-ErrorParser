@@ -1,0 +1,6 @@
+This line contains ERROR.
+This line contains ERROR.
+This line contains Error.
+not this one.
+nor this one.
+This line contains WARNING.

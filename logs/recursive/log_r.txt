@@ -1,0 +1,1 @@
+this extra log contains an Error, Warning, ERROR and WARNING.

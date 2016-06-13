@@ -1,11 +1,10 @@
-package main
+package tagparser
 
 import (
 	"bufio"
 	"bytes"	
-	"flag"
+	"encoding/json"	
 	"fmt"
-//	"io"
 	"io/ioutil"
 	"log"
 	"mime"
@@ -14,8 +13,6 @@ import (
 	s "strings"
 	"sync"
 	"time"
-	
-	"github.com/InGaN/Go-ErrorParser/slack"
 )
 
 var pTags *[]string
@@ -26,19 +23,19 @@ type counter struct {
 	TotalFileSize int64
 	FileName string
 } 
+type Response struct {
+	Date string `json:"date"`
+	Directory string `json:"directory"`
+	TagsFile string `json:"tagsFile"`
+	Tags []string `json:"tags"`	
+	Scanned int `json:"scanned"`
+	Size string `json:"size"`
+	AmountTags int `json:"amountTags"`
+	AmountFiles int `json:"amountFiles"`
+}
 
 var channels chan counter
 var waitGroups *sync.WaitGroup = &sync.WaitGroup{}	
-
-var (	
-	flagHelp1	 = flag.Bool("h", false, "help")
-	flagHelp2	 = flag.Bool("help", false, "help")
-	flagSearchR	 = flag.Bool("r", false, "Recursive search")
-	flagEchoMsg	 = flag.Bool("e", false, "Echo messages containing tags")
-	flagFileDir	 = flag.String("f", ".", "Directory containing files to parse")
-	flagTags	 = flag.String("t", "tags.txt", "file containing tags")
-	flagSlack	 = flag.Bool("s", false, "Send error messages to Slack")
-)
 
 func timeTrack(start time.Time, name string) {
 	elapsed := time.Since(start)
@@ -46,8 +43,6 @@ func timeTrack(start time.Time, name string) {
 }
 
 func visit(path string, f os.FileInfo, err error) error {
-	//fmt.Printf("Visited: %s\n", path)
-	
 	arr := (s.Split(path,"."))
 	mimeTxt := mime.TypeByExtension(".txt")
 	if(len(arr)>1) {
@@ -58,8 +53,8 @@ func visit(path string, f os.FileInfo, err error) error {
   return nil
 } 
 
-func searchMethod(path string, c chan counter, wg *sync.WaitGroup) {			
-	if(*flagSearchR) {
+func searchMethod(path string, c chan counter, wg *sync.WaitGroup, r bool) {			
+	if(r) {
 		err := filepath.Walk(path, visit)
 		if err != nil {
 			log.Fatal(err)
@@ -118,14 +113,11 @@ func checkContainsScanner(path string, tags []string, c chan counter, wg *sync.W
 
 func parseLine(input string, tags []string) int {
 	amount := 0
-	for index, element := range tags {
+	for _, element := range tags { //_ = index
 		if s.Contains(input, element) {			
-			if(*flagEchoMsg) {
-				fmt.Printf("tag: %s | %s \n", tags[index], input)
-			}
-			if(*flagSlack) {
-				slack.SendJSONtoSlack(fmt.Sprintf("tag: %s | %s \n", tags[index], input))
-			}
+			//if(e) {
+			//	fmt.Printf("tag: %s | %s \n", tags[index], input)
+			//}	
 			amount++
 		}
 	}
@@ -145,16 +137,6 @@ func parseTagFile(path string) []string{
 	return nil
 }
 
-func showHelp() {
-	fmt.Println("This Go program parses plain text files containing certain tags.")
-	fmt.Println("Paramaters that can be used:")
-	fmt.Println("-e\t\t\techo messages containing tags")
-	fmt.Println("-f=<path>\t\tpath to folder to search in")
-	fmt.Println("-h, -help\t\tshow help")
-	fmt.Println("-r\t\t\trecursive search")
-	fmt.Println("-t=<path>\t\tpath to csv file containing tags")
-}
-
 func getByteSize(value int64) string {
 	sizes := []string{"Byte", "KB", "MB", "GB", "TB", "PB", "EB", "ZB", "YB"}
 	
@@ -169,61 +151,78 @@ func getByteSize(value int64) string {
 	return fmt.Sprintf("%d%s", value, sizes[i])
 }
 
-func main() {
-	flag.Parse()
-	if(*flagHelp1 || *flagHelp2) {
-		showHelp()
-	} else {
-		defer timeTrack(time.Now(), "Operation")		
-		if *flagFileDir == "" {
-			fmt.Fprintln(os.Stderr, "require a folder")
-			flag.Usage()
-			os.Exit(1)
-		}	
-		fmt.Println("\nStarting parse...")		
-		
-		tags := parseTagFile(*flagTags)
-		pTags = &tags
-		
-		channels = make(chan counter)
-		
-		searchMethod(*flagFileDir, channels, waitGroups)			
-		
-		go func(channels chan counter, waitGroups *sync.WaitGroup) {
-			waitGroups.Wait()
-			close(channels)
-		}(channels, waitGroups)
-		
-		TotalTagged := 0
-		TotalFilesTagged := 0
-		TotalFiles := 0
-		var TotalFileSize int64 = 0
-		var buffer bytes.Buffer
-		for i := range channels {
-			TotalTagged += i.TotalTagged
-			if(i.TotalTagged > 0) {
-				TotalFilesTagged++
-				buffer.WriteString(fmt.Sprintf("%s (%d)\n", i.FileName, i.TotalTagged))
-			}
-			TotalFileSize += i.TotalFileSize
-			if(i.TotalFileSize > 0) {
-				TotalFiles++
-			}
-		}	
-		
-		t := time.Now()
+// Parameters:
+// r - recursive search
+// e - echo each single line with tags
+// pr - print summary
+// dir - directory to search .txt files
+// tags - .txt file containing comma separated tags
+func Parse(r bool, pr bool, dir string, tags string) []byte {
+	if (pr) { 
+		defer timeTrack(time.Now(), "Operation") 
+		fmt.Println("\nStarting parse...")
+	}
+	if (dir == "") {
+		fmt.Fprintln(os.Stderr, "require a folder")
+		os.Exit(1) // throw exception instead
+	}				
+	
+	tagss := parseTagFile(tags)
+	pTags = &tagss
+	
+	channels = make(chan counter)
+	
+	searchMethod(dir, channels, waitGroups, r)			
+	
+	go func(channels chan counter, waitGroups *sync.WaitGroup) {
+		waitGroups.Wait()
+		close(channels)
+	}(channels, waitGroups)
+	
+	TotalTagged := 0
+	TotalFilesTagged := 0
+	TotalFiles := 0
+	var TotalFileSize int64 = 0
+	var buffer bytes.Buffer
+	for i := range channels {
+		TotalTagged += i.TotalTagged
+		if(i.TotalTagged > 0) {
+			TotalFilesTagged++
+			buffer.WriteString(fmt.Sprintf("%s (%d)\n", i.FileName, i.TotalTagged))
+		}
+		TotalFileSize += i.TotalFileSize
+		if(i.TotalFileSize > 0) {
+			TotalFiles++
+		}
+	}	
+	
+	t := time.Now()
+	
+	response := &Response {
+		Date: fmt.Sprintf("%d-%02d-%02d %02d:%02d:%02d", t.Year(), t.Month(), t.Day(), t.Hour(), t.Minute(), t.Second()),
+		Directory: dir,
+		TagsFile: tags,
+		Tags: parseTagFile(tags),
+		Scanned: TotalFiles,
+		Size: getByteSize(TotalFileSize),
+		AmountTags: TotalTagged,
+		AmountFiles: TotalFilesTagged,			
+	} 
+	rsp, _:= json.Marshal(response)
+			
+	if (pr) { 
 		fmt.Println("\n=== FILES ===")
 		fmt.Printf(buffer.String())
 		fmt.Println("\n=== RESULTS ===")
 		fmt.Printf("%d-%02d-%02d %02d:%02d:%02d\n", t.Year(), t.Month(), t.Day(), t.Hour(), t.Minute(), t.Second())
-		fmt.Println("Directory: ", *flagFileDir)
-		fmt.Println("Tags file: ", *flagTags)
-		fmt.Printf("Tags: %v\n", parseTagFile(*flagTags))
-		fmt.Println("Recursive: ", *flagSearchR)	
-		fmt.Println("Send to Slack Channel: ", *flagSlack)
+		fmt.Println("Directory: ", dir)
+		fmt.Println("Tags file: ", tags)
+		fmt.Printf("Tags: %v\n", parseTagFile(tags))
+		fmt.Println("Recursive: ", r)			
 		fmt.Printf("Total files scanned: %d\n", TotalFiles)
 		fmt.Printf("total file size: %s\n", getByteSize(TotalFileSize))
 		fmt.Printf("total amount of tags found: %d\n", TotalTagged)
 		fmt.Printf("in %d files\n", TotalFilesTagged)				
 	}
+	return rsp
 }
