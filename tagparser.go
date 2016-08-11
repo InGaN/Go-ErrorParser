@@ -18,6 +18,7 @@ import (
 
 var pTags *[]string
 var mimeTxt = mime.TypeByExtension(".txt")	
+var mimeJSON = mime.TypeByExtension(".json")
 
 type counter struct {
 	TotalTagged int
@@ -45,9 +46,8 @@ func timeTrack(start time.Time, name string) {
 
 func visit(path string, f os.FileInfo, err error) error {
 	arr := (s.Split(path,"."))
-	mimeTxt := mime.TypeByExtension(".txt")
 	if(len(arr)>1) {
-		if(mime.TypeByExtension("."+arr[len(arr)-1]) == mimeTxt) {			
+		if(mime.TypeByExtension("."+arr[len(arr)-1]) == mimeTxt || mime.TypeByExtension("."+arr[len(arr)-1]) == mimeJSON) {			
 			go checkContainsScanner(path, *pTags, channels, waitGroups)
 		}
 	}  
@@ -81,7 +81,7 @@ func checkContainsScanner(path string, tags []string, c chan counter, wg *sync.W
 	var FileName string
 	arr := (s.Split(path,"."))
 	if(len(arr)>1) {		
-		if(mime.TypeByExtension("."+arr[len(arr)-1]) == mimeTxt) {					
+		if(mime.TypeByExtension("."+arr[len(arr)-1]) == mimeTxt || mime.TypeByExtension("."+arr[len(arr)-1]) == mimeJSON) {					
 			file, err := os.Open(path)
 			if err != nil {
 				log.Fatal(err)
@@ -126,14 +126,14 @@ func parseLine(input string, tags []string) int {
 }
 
 func parseTagFile(path string) []string{
-	extension := (s.Split(path,"."))
-	if(mime.TypeByExtension("."+extension[len(extension)-1]) == mime.TypeByExtension(".txt")) {
+	arr := (s.Split(path,"."))
+	if(mime.TypeByExtension("."+arr[len(arr)-1]) == mimeTxt || mime.TypeByExtension("."+arr[len(arr)-1]) == mimeJSON) {
 		file, err := ioutil.ReadFile(path)
 		if err != nil {
 			log.Fatal(err)
 		}
-		arr := s.Split(string(file), ",")		
-		return arr
+		val := s.Split(string(file), ",")		
+		return val
 	}	
 	return nil
 }

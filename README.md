@@ -1,6 +1,6 @@
-# Go - Tag Parser
+# Go - Tag Parser (warning, contains some issues)
 
-Module written to find tags or keywords in plain text files (logs) and return output in JSON.
+Module written to find tags or keywords in plain text files and JSON files (.txt and .json) and return output in JSON.
 
 Tags can be passed as comma separated text file or as an array argument.
 
@@ -10,6 +10,9 @@ Tags can be passed as comma separated text file or as an array argument.
 * Output can be printed in terminal
 * Output returned as JSON byte[] object
 
+## Issues
+* only counts a tag per line in file
+* channels sometimes lock
 
 ## Installation
 ```
